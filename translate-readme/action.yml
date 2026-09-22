@@ -1,0 +1,64 @@
+name: Translate README
+description: >
+  Translate README.md to another language using DeepL.
+  Runs only if the target file already exists in the repo (opt-in).
+
+inputs:
+  deepl_api_key:
+    description: DeepL API key
+    required: true
+  source:
+    description: Source markdown file
+    default: README.md
+  target:
+    description: Target markdown file
+    default: README.ja.md
+  target_lang:
+    description: DeepL target language code (e.g. JA, EN-US, ZH)
+    default: JA
+
+runs:
+  using: composite
+  steps:
+    - name: Check target file exists
+      id: check
+      shell: bash
+      run: |
+        if [ -f "${{ inputs.target }}" ]; then
+          echo "exists=true" >> $GITHUB_OUTPUT
+        else
+          echo "exists=false" >> $GITHUB_OUTPUT
+          echo "Skipping: ${{ inputs.target }} not found (create it to opt in)"
+        fi
+
+    - uses: actions/setup-python@v5
+      if: steps.check.outputs.exists == 'true'
+      with:
+        python-version: "3.12"
+
+    - name: Install dependencies
+      if: steps.check.outputs.exists == 'true'
+      shell: bash
+      run: pip install httpx
+
+    - name: Translate
+      if: steps.check.outputs.exists == 'true'
+      shell: bash
+      env:
+        DEEPL_API_KEY: ${{ inputs.deepl_api_key }}
+      run: |
+        python "${{ github.action_path }}/translate.py" \
+          "${{ inputs.source }}" \
+          "${{ inputs.target }}" \
+          "${{ inputs.target_lang }}"
+
+    - name: Commit updated translation
+      if: steps.check.outputs.exists == 'true'
+      shell: bash
+      run: |
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+        git add "${{ inputs.target }}"
+        git diff --cached --quiet && echo "No changes" || \
+          git commit -m "Auto-translate ${{ inputs.source }} → ${{ inputs.target }} [skip ci]" \
+          && git push
